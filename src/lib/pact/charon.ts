@@ -1,18 +1,20 @@
 import "server-only";
+import { z } from "zod";
 import { call, pactUrl, serverAuth } from "../http";
 
-export type MintedToken = {
-  token_type: string;
-  entity_id: string;
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
-};
+const MintedToken = z.object({
+  token_type: z.string(),
+  entity_id: z.string(),
+  access_token: z.string(),
+  refresh_token: z.string().optional(),
+  expires_in: z.number(),
+});
+export type MintedToken = z.infer<typeof MintedToken>;
 
 /** `entityId` keeps an ephemeral entity's id across re-mints; WIMS still resolves it once activated. */
 export async function mintToken(phone: string, entityId?: string): Promise<MintedToken> {
   // Charon: POST /token-exchange/v0/tokens (dynamic issuance, secret key only)
-  return call<MintedToken>({
+  return call({
     label: "Mint user token (dynamic issuance)",
     service: "charon",
     method: "POST",
@@ -23,6 +25,7 @@ export async function mintToken(phone: string, entityId?: string): Promise<Minte
       ...(entityId && { entity_id: entityId }),
       identifiers: [{ identifier_type: "phone_number", value: phone }],
     },
+    schema: MintedToken,
   });
 }
 

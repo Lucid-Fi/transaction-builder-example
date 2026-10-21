@@ -29,13 +29,13 @@ const ENTITY_LABELS = { ineligible: "Not eligible", eligible: "Not enrolled", ac
 
 function Unavailable({ what, reason }: { what: string; reason: unknown }) {
   const detail =
-    reason instanceof ApiError
-      ? reason.status
+    reason instanceof ApiError && reason.status === 0
+      ? "network error"
+      : reason instanceof ApiError && reason.status >= 300
         ? `HTTP ${reason.status}`
-        : "network error"
-      : reason instanceof Error
-        ? reason.message
-        : String(reason);
+        : reason instanceof Error
+          ? reason.message
+          : String(reason);
   return (
     <Alert variant="destructive">
       <AlertDescription>

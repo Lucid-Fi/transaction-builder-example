@@ -125,6 +125,7 @@ it("mintTestUsdt reports a confirmed mint", async () => {
 });
 
 it("mintTestUsdt maps a malformed recipient address", async () => {
-  vi.stubEnv("DEMO_FAUCET_PRIVATE_KEY", KEY); // getAddress throws before any RPC call: no fetch stub
+  vi.stubEnv("DEMO_FAUCET_PRIVATE_KEY", KEY); // getAddress throws before any RPC call
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("no network"); }));
   await expect(mintTestUsdt("0xnot-an-address")).rejects.toThrow(/^Faucet mint failed: Address/);
 });

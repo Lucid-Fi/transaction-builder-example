@@ -42,6 +42,17 @@ describe("settle", () => {
     await expect(settle(async () => ok("submitted"), poll, opts())).rejects.toThrow(/may still land/);
   });
 
+  it("a submit body that failed its schema stops and says the deposit may still land", async () => {
+    const submit = vi.fn().mockResolvedValue({
+      error: "Submit passkey signature: response didn't match schema: status: Invalid input: expected string, received undefined",
+      status: 200,
+    });
+    const poll = vi.fn();
+    await expect(settle(submit, poll, opts())).rejects.toThrow(/may still land/);
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(poll).not.toHaveBeenCalled();
+  });
+
   it("times out with the last error when submit never answers", async () => {
     const submit = async () => ({ error: "upstream unavailable", status: 502 });
     await expect(settle(submit, vi.fn(), { ...opts(), deadline: 0 })).rejects.toThrow(

@@ -5,6 +5,8 @@ type Answer = DepositStatus | { error: string; status?: number };
 
 // No response, 429 or 5xx: the server may or may not have acted. Any other error is final.
 const unknown = (status?: number) => status === 0 || status === 429 || (status ?? 0) >= 500;
+// A 2xx error is a body that failed its schema: the server acted.
+const accepted = (status?: number) => status !== undefined && status >= 200 && status < 300;
 
 /**
  * Drives a signed deposit to a terminal status. Repeats `submit` with the same signature until it
@@ -27,7 +29,7 @@ export async function settle(
     const failed = "error" in next;
     if (!("error" in next)) tx = next;
     else if (!unknown(next.status)) {
-      throw new Error(tx ? `${next.error} The deposit may still land; check Activity before depositing again.` : next.error);
+      throw new Error(tx || accepted(next.status) ? `${next.error} The deposit may still land; check Activity before depositing again.` : next.error);
     }
     onStep(tx ? `Status: ${tx.status}${failed ? " (status check failed, retrying…)" : ""}` : "Submit outcome unknown, retrying…");
     if (tx?.terminal) return tx;

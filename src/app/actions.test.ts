@@ -65,7 +65,7 @@ it("verifyOtp: an ephemeral mint skips the wallet lookup and goes to /onboard", 
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(new Response(JSON.stringify({ status: "approved" })))
-    .mockResolvedValueOnce(new Response(JSON.stringify({ token_type: "bearer", entity_id: "ent-1", access_token: token })));
+    .mockResolvedValueOnce(new Response(JSON.stringify({ token_type: "bearer", entity_id: "ent-1", access_token: token, expires_in: 3600 })));
   vi.stubGlobal("fetch", fetchMock);
 
   const form = new FormData();
@@ -81,7 +81,7 @@ it("sendOtp: without TWILIO_API_KEY_SID a valid number signs in without an SMS",
   const token = `e30.${Buffer.from(JSON.stringify({ t: "cft", exp: Date.now() / 1000 + 900 })).toString("base64url")}.sig`;
   const fetchMock = vi
     .fn()
-    .mockResolvedValueOnce(new Response(JSON.stringify({ token_type: "bearer", entity_id: "ent-1", access_token: token })));
+    .mockResolvedValueOnce(new Response(JSON.stringify({ token_type: "bearer", entity_id: "ent-1", access_token: token, expires_in: 3600 })));
   vi.stubGlobal("fetch", fetchMock);
 
   const bad = new FormData();
@@ -114,6 +114,8 @@ it.each([
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 })));
 
   await expect(action()).resolves.toMatchObject({ status: 502 });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
+  await expect(action()).resolves.toMatchObject({ status: 200, error: expect.stringContaining("response didn't match schema") });
 });
 
 describe("fundFromFaucet", () => {

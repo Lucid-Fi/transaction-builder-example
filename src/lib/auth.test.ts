@@ -47,7 +47,7 @@ const store = (s: object, name = "session") => jar.values.set(name, sign(name, s
 function minted(claims: object, entityId = "ent-new") {
   const access_token = jwt(claims);
   fetchMock.mockResolvedValueOnce(
-    new Response(JSON.stringify({ token_type: "bearer", entity_id: entityId, access_token })),
+    new Response(JSON.stringify({ token_type: "bearer", entity_id: entityId, access_token, expires_in: 3600 })),
   );
   return access_token;
 }

@@ -127,7 +127,8 @@ The chain is `arbitrum-sepolia`, the yield source is `sandbox-usdt-arbitrum-sepo
 token is the token-info slug `arbitrum-sepolia-test-usdt` (all three in `src/lib/pact/yield.ts`).
 The yield-source and token slugs are per-environment data (yield and token-info), so check them when
 you change `PACT_API_BASE_URL`. `src/lib/pact/contract.test.ts` pins the exact URL, method, auth
-headers and body of every call.
+headers and body of every call, and parses a captured response for each call whose body the demo
+reads.
 
 ## Errors
 
@@ -147,8 +148,13 @@ to Pact support. Reasons worth handling:
 - `build_expired`, `build_superseded`: build and sign again.
 - `rate_limited`: back off and retry.
 
+Every Pact response the demo reads is checked against a zod schema next to its call in
+`src/lib/pact/*.ts`; unknown fields are ignored. A 2xx body that doesn't match throws an `ApiError`
+with that 2xx status and a one-line message naming the failing fields, while the inspector still
+shows the real body.
+
 No response, a 429 or a 5xx leaves the outcome unknown, so retry or check status. Other 4xx errors
-are final.
+are final. A 2xx that fails the schema means the server acted: don't retry it.
 
 ## Auth model
 
@@ -290,7 +296,8 @@ src/
   lib/
     pact/         one file per Pact service: charon, aa, wims, portfolio, yield, transactions,
                   incentives
-    http.ts       call(): the single Pact and Twilio fetch, auth headers, recording
+    http.ts       call(): the single Pact and Twilio fetch, auth headers, recording, response
+                  schema check
     faucet.ts     DEMO ONLY: MockUSDT faucet, the app's one direct EVM RPC call (viem)
     recorder.ts   inspector store and secret masking
     auth.ts       session guard and token refresh

@@ -1,8 +1,10 @@
 import "server-only";
 import { headers as requestHeaders } from "next/headers";
+import type { ZodType } from "zod";
 import { config } from "./config";
 import { record, redact } from "./recorder";
 
+/** `status` is 0 when there was no response; a 2xx status means the body failed the call's response schema. */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -25,7 +27,7 @@ export class ApiError extends Error {
   }
 }
 
-type CallOptions = {
+type CallOptions<T> = {
   label: string; // human step name, shown as the inspector card title
   service: string;
   method: "GET" | "POST";
@@ -33,6 +35,7 @@ type CallOptions = {
   headers?: Record<string, string>;
   json?: unknown;
   form?: Record<string, string>;
+  schema?: ZodType<T>; // checked after a 2xx; a mismatch throws ApiError with that 2xx status
 };
 
 function parse(text: string): unknown {
@@ -68,7 +71,7 @@ export async function currentRequest(): Promise<{ requestId: string; path?: stri
 }
 
 /** Every Pact and Twilio request goes through here and is recorded. */
-export async function call<T>(opts: CallOptions): Promise<T> {
+export async function call<T>(opts: CallOptions<T>): Promise<T> {
   const { label, service, method, url, json, form } = opts;
   const headers: Record<string, string> = { accept: "application/json", ...opts.headers };
   let body: string | undefined;
@@ -112,7 +115,11 @@ export async function call<T>(opts: CallOptions): Promise<T> {
     const detail = typeof message === "string" ? `${message} (HTTP ${status})` : `HTTP ${status}`;
     throw new ApiError(`${label} failed: ${detail}`, status, responseBody);
   }
-  return responseBody as T;
+  if (!opts.schema) return responseBody as T;
+  const parsed = opts.schema.safeParse(responseBody);
+  if (parsed.success) return parsed.data;
+  const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+  throw new ApiError(`${label}: response didn't match schema: ${issues}`, status, responseBody);
 }
 
 export function pactUrl(path: string): string {

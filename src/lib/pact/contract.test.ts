@@ -3,6 +3,7 @@ import { listCalls } from "../recorder";
 import { checkVerification, startVerification } from "../twilio";
 import { createPasskeyAccount, lookupAccount } from "./aa";
 import { isEphemeral, mintToken, tokenExpiry } from "./charon";
+import * as F from "./fixtures";
 import { getEntityCampaign, listCampaigns } from "./incentives";
 import { getChainPortfolio } from "./portfolio";
 import { listTransactions } from "./transactions";
@@ -45,17 +46,15 @@ function sent() {
   };
 }
 
+const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+
 const jwt = (claims: object) =>
   `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
 
 describe("Pact contracts", () => {
   it("charon mintToken: SK only, auto grant by phone; recorded with secrets masked", async () => {
     const token = jwt({ sub: "ent-1", exp: 1 });
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ token_type: "bearer", entity_id: "ent-1", access_token: token }), {
-        status: 200,
-      }),
-    );
+    fetchMock.mockResolvedValueOnce(reply({ ...F.mint, access_token: token }));
     await mintToken("+15551234567");
     expect(sent()).toEqual({
       url: `${BASE}/token-exchange/v0/tokens`,
@@ -74,6 +73,7 @@ describe("Pact contracts", () => {
   });
 
   it("charon mintToken: sends entity_id when given", async () => {
+    fetchMock.mockResolvedValueOnce(reply(F.mint));
     await mintToken("+15551234567", "ent-1");
     expect(sent().body).toEqual({
       grant_type: "auto",
@@ -94,16 +94,30 @@ describe("Pact contracts", () => {
   });
 
   it("aa lookupAccount returns the first account", async () => {
-    const account = { entity_id: "ent-1", address: ADDR, sudo_key: {} };
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([account, { address: "0xdef" }])));
-    expect(await lookupAccount("user-jwt", "ent-1")).toEqual(account);
+    fetchMock.mockResolvedValueOnce(reply([F.account, { ...F.account, address: "0xdef" }]));
+    expect(await lookupAccount("user-jwt", "ent-1")).toEqual({
+      entity_id: F.account.entity_id,
+      address: F.account.address,
+      sudo_key: { type: "passkey", credential_id: F.account.sudo_key.credential_id, rp_id: "localhost" },
+    });
+  });
+
+  it("aa lookupAccount accepts a non-passkey sudo_key", async () => {
+    fetchMock.mockResolvedValueOnce(reply([{ ...F.account, sudo_key: { type: "ecdsa", address: "0x1" } }]));
+    expect((await lookupAccount("user-jwt", "ent-1"))?.sudo_key).toEqual({ type: "ecdsa" });
   });
 
   it("aa createPasskeyAccount", async () => {
     const x = Array.from({ length: 32 }, (_, i) => i);
     const y = Array.from({ length: 32 }, (_, i) => 0xe0 + i);
-    await createPasskeyAccount("user-jwt", {
+    fetchMock.mockResolvedValueOnce(reply(F.created));
+    const created = await createPasskeyAccount("user-jwt", {
       entityId: "ent-1", x, y, credentialId: "cred", rpId: "localhost",
+    });
+    expect(created).toEqual({
+      entity_id: F.created.entity_id,
+      address: F.created.address,
+      deployments: [{ chain: "arbitrum-sepolia", deployed: false }],
     });
     expect(sent()).toEqual({
       url: `${BASE}/aa/v0/accounts`,
@@ -141,8 +155,22 @@ describe("Pact contracts", () => {
     await expect(activate("user-jwt", ADDR)).rejects.toMatchObject({ status: 500 });
   });
 
+  it("portfolio getChainPortfolio with a group that has no holdings", async () => {
+    fetchMock.mockResolvedValueOnce(reply({ ...F.portfolio, groups: [{}] }));
+    expect((await getChainPortfolio("user-jwt", ADDR)).groups[0].holdings).toBeUndefined();
+  });
+
   it("portfolio getChainPortfolio", async () => {
-    await getChainPortfolio("user-jwt", ADDR);
+    fetchMock.mockResolvedValueOnce(reply(F.portfolio));
+    const portfolio = await getChainPortfolio("user-jwt", ADDR);
+    expect(portfolio.groups[0].holdings?.[0]).toEqual({
+      token_address: "0x45d9c8b0d6402cddefe4e3965e907d29897b9c7d",
+      token_slug: "arbitrum-sepolia-test-usdt",
+      symbol: "tUSDT",
+      decimals: 6,
+      balance: "100.000000000000000000",
+      value: "100.000000000000000000",
+    });
     expect(sent()).toEqual({
       url: `${BASE}/portfolio/v0/chains/arbitrum-sepolia/wallets/${ADDR}/portfolio?include_holdings=true&group_by=token_slug`,
       method: "GET",
@@ -152,7 +180,8 @@ describe("Pact contracts", () => {
   });
 
   it("yield getWalletYield", async () => {
-    await getWalletYield("user-jwt", ADDR);
+    fetchMock.mockResolvedValueOnce(reply(F.walletYield));
+    expect((await getWalletYield("user-jwt", ADDR)).positions).toEqual([]);
     expect(sent()).toEqual({
       url: `${BASE}/yield/v0/wallets/${ADDR}?include_positions=true`,
       method: "GET",
@@ -161,8 +190,28 @@ describe("Pact contracts", () => {
     });
   });
 
+  it("yield getWalletYield with a position", async () => {
+    fetchMock.mockResolvedValueOnce(reply(F.walletYieldWithPosition));
+    expect((await getWalletYield("user-jwt", ADDR)).positions?.[0]).toMatchObject({
+      source_slug: "sandbox-usdt-arbitrum-sepolia",
+      apy: { total: "0.05", trailing_30d: null },
+    });
+  });
+
+  it("yield getWalletYield with a position that has no APY yet", async () => {
+    const [position] = F.walletYieldWithPosition.positions;
+    fetchMock.mockResolvedValueOnce(reply({ ...F.walletYieldWithPosition, positions: [{ ...position, apy: { total: null, trailing_30d: null } }] }));
+    expect((await getWalletYield("user-jwt", ADDR)).positions?.[0].apy).toEqual({ total: null, trailing_30d: null });
+  });
+
+  it("yield getWalletYield without positions", async () => {
+    fetchMock.mockResolvedValueOnce(reply({ ...F.walletYield, positions: undefined }));
+    expect(await getWalletYield("user-jwt", ADDR)).not.toHaveProperty("positions");
+  });
+
   it("yield getSource", async () => {
-    await getSource("user-jwt");
+    fetchMock.mockResolvedValueOnce(reply(F.source));
+    expect((await getSource("user-jwt")).apy).toEqual({ base: "0.05", incentives: "0", total: "0.05", trailing_30d: null });
     expect(sent()).toEqual({
       url: `${BASE}/yield/v0/sources/sandbox-usdt-arbitrum-sepolia`,
       method: "GET",
@@ -172,7 +221,12 @@ describe("Pact contracts", () => {
   });
 
   it("yield buildDeposit", async () => {
-    await buildDeposit("user-jwt", ADDR, "10.5");
+    fetchMock.mockResolvedValueOnce(reply(F.built, 201));
+    expect(await buildDeposit("user-jwt", ADDR, "10.5")).toMatchObject({
+      id: F.built.id,
+      user_op_hash: F.built.user_op_hash,
+      expires_at: F.built.expires_at,
+    });
     expect(sent()).toEqual({
       url: `${BASE}/yield/v0/wallets/${ADDR}/deposits/build`,
       method: "POST",
@@ -183,9 +237,11 @@ describe("Pact contracts", () => {
 
   // WebAuthn signing is a browser ceremony, not a network call; its output is submitSignature's body.
   it("yield submitSignature", async () => {
-    await submitSignature("user-jwt", "tx-1", {
+    fetchMock.mockResolvedValueOnce(reply(F.submitted));
+    const tx = await submitSignature("user-jwt", "tx-1", {
       type: "webauthn", authenticator_data: "ad", client_data_json: "cd", signature: "sig",
     });
+    expect(tx).toMatchObject({ status: "submitted", transaction_hash: null, failure_reason: null });
     expect(sent()).toEqual({
       url: `${BASE}/yield/v0/transactions/tx-1/submit`,
       method: "POST",
@@ -195,7 +251,11 @@ describe("Pact contracts", () => {
   });
 
   it("yield getTransaction: id is path-encoded", async () => {
-    await getTransaction("user-jwt", "a/b");
+    fetchMock.mockResolvedValueOnce(reply(F.confirmed));
+    expect(await getTransaction("user-jwt", "a/b")).toMatchObject({
+      status: "confirmed",
+      transaction_hash: F.confirmed.transaction_hash,
+    });
     expect(sent()).toEqual({
       url: `${BASE}/yield/v0/transactions/a%2Fb`,
       method: "GET",
@@ -205,7 +265,10 @@ describe("Pact contracts", () => {
   });
 
   it("transactions listTransactions, with cursor and filters", async () => {
-    await listTransactions("user-jwt", ADDR);
+    fetchMock.mockImplementation(async () => reply(F.transactions));
+    const page = await listTransactions("user-jwt", ADDR);
+    expect(page.data[0].token_legs[1].token_symbol).toBeUndefined();
+    expect(page.data[1].volume_usd).toBeNull();
     expect(sent()).toEqual({
       url: `${BASE}/transactions/v0/transactions?wallet_addresses=${ADDR}&count=20`,
       method: "GET",
@@ -225,7 +288,8 @@ describe("Pact contracts", () => {
   });
 
   it("incentives listCampaigns", async () => {
-    await listCampaigns("user-jwt");
+    fetchMock.mockResolvedValueOnce(reply(F.campaigns));
+    expect((await listCampaigns("user-jwt")).data[0].campaign_id).toBe(F.campaigns.data[0].campaign_id);
     expect(sent()).toEqual({
       url: `${BASE}/incentives/campaigns`,
       method: "GET",
@@ -235,7 +299,10 @@ describe("Pact contracts", () => {
   });
 
   it("incentives getEntityCampaign: ids are path-encoded", async () => {
-    await getEntityCampaign("user-jwt", "ent-1", "c/1");
+    fetchMock.mockResolvedValueOnce(reply(F.entityCampaign));
+    const campaign = await getEntityCampaign("user-jwt", "ent-1", "c/1");
+    expect(campaign.entity_status).toBe("eligible");
+    expect(campaign.rewards.claimable).toBe("0");
     expect(sent()).toEqual({
       url: `${BASE}/incentives/entities/ent-1/campaigns/c%2F1`,
       method: "GET",
