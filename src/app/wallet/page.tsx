@@ -114,20 +114,7 @@ export default async function WalletPage() {
       </Section>
 
       {faucet && (
-        <Section
-          title="Demo faucet"
-          description="For this demo only, not part of a Payactiv integration: real users are funded by payroll."
-        >
-          <p className="text-sm text-muted-foreground">
-            Mints 100 test USDT to this wallet by calling the MockUSDT contract directly over EVM RPC with a
-            server key. This is the app&apos;s one call that skips Pact APIs. Gas is paid by the faucet address:
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="font-mono text-sm" title={faucet}>
-              {short(faucet)}
-            </code>
-            <CopyButton value={faucet} />
-          </div>
+        <Section title="Demo faucet" description="For demo purposes only. Grants sandbox test tokens.">
           <FaucetButton />
         </Section>
       )}

@@ -37,7 +37,7 @@ export function FaucetButton() {
           </p>
           <p className="text-sm text-muted-foreground">
             {result.confirmed
-              ? "The balance updates once Pact's indexer sees the transfer. Refresh if it hasn't moved yet."
+              ? "Your balance updates in a few seconds. Refresh if it hasn't moved yet."
               : "Not confirmed yet; it may still land. Check the link before minting again."}
           </p>
         </>
