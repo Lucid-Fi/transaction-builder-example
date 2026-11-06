@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isAmount } from "@/lib/amount";
 import { requireSession } from "@/lib/auth";
 import { faucetAddress, mintTestUsdt } from "@/lib/faucet";
 import { ApiError } from "@/lib/http";
@@ -12,11 +13,9 @@ type Result<T> = T | { error: string; status?: number };
 // `terminal` saves the client importing TERMINAL from a server-only module.
 export type TransactionStatus = Transaction & { terminal: boolean };
 
-const AMOUNT = /^\d+(\.\d{1,6})?$/;
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const isB64url = (v: unknown) => typeof v === "string" && B64URL.test(v);
-const isAmount = (v: unknown) => typeof v === "string" && AMOUNT.test(v) && /[1-9]/.test(v);
 const isAssertion = (a: WebAuthnAssertion) =>
   a?.type === "webauthn" && isB64url(a.authenticator_data) && isB64url(a.client_data_json) && isB64url(a.signature);
 

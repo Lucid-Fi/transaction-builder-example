@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AMOUNT_PATTERN } from "@/lib/amount";
 import { signUserOpHash } from "@/lib/webauthn";
 import { buildDeposit, getDeposit, submitDeposit } from "./actions";
 import { settle } from "./settle";
@@ -83,6 +84,8 @@ export function DepositForm({ credentialId, rpId }: { credentialId: string; rpId
           <Input
             id="amount"
             inputMode="decimal"
+            pattern={AMOUNT_PATTERN}
+            title="A number like 10 or 0.5, with at most 6 decimals"
             placeholder="10.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}

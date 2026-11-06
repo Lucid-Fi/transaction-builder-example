@@ -33,9 +33,12 @@ beforeEach(() => {
 });
 
 describe("Server Action input checks", () => {
-  it.each(["0", "0.000000", "abc", "1.1234567", "-1", " 1", "1e3", "1."])("buildDeposit rejects %j", async (amount) => {
-    await expect(buildDeposit(amount)).resolves.toHaveProperty("error");
-  });
+  it.each(["0", "0.000000", "abc", "1.1234567", "-1", " 1", "1e3", "1.", "01", "00.5"])(
+    "buildDeposit rejects %j",
+    async (amount) => {
+      await expect(buildDeposit(amount)).resolves.toHaveProperty("error");
+    },
+  );
 
   it("buildDeposit lets a valid amount through to the session check", async () => {
     await expect(buildDeposit("1.5")).rejects.toThrow("no request");
@@ -50,7 +53,7 @@ describe("Server Action input checks", () => {
     },
   );
 
-  it.each(["0", "abc", "1.1234567"])("buildSend rejects amount %j", async (amount) => {
+  it.each(["0", "abc", "1.1234567", "01", "00.5"])("buildSend rejects amount %j", async (amount) => {
     await expect(buildSend(TO, amount)).resolves.toHaveProperty("error");
   });
 
