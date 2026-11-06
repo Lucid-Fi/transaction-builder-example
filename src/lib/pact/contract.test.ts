@@ -7,6 +7,7 @@ import * as F from "./fixtures";
 import { getEntityCampaign, listCampaigns } from "./incentives";
 import { getChainPortfolio } from "./portfolio";
 import { listTransactions } from "./transactions";
+import * as txBuilder from "./tx-builder";
 import { activate } from "./wims";
 import { buildDeposit, getSource, getTransaction, getWalletYield, submitSignature } from "./yield";
 
@@ -258,6 +259,53 @@ describe("Pact contracts", () => {
     });
     expect(sent()).toEqual({
       url: `${BASE}/yield/v0/transactions/a%2Fb`,
+      method: "GET",
+      auth: USER,
+      body: undefined,
+    });
+  });
+
+  it("tx-builder buildSend", async () => {
+    fetchMock.mockResolvedValueOnce(reply(F.built, 201));
+    expect(await txBuilder.buildSend("user-jwt", ADDR, "0xdef", "25.5")).toMatchObject({
+      id: F.built.id,
+      user_op_hash: F.built.user_op_hash,
+      expires_at: F.built.expires_at,
+    });
+    expect(sent()).toEqual({
+      url: `${BASE}/tx-builder/v0/transactions`,
+      method: "POST",
+      auth: USER,
+      body: {
+        chain: "arbitrum-sepolia",
+        wallet: ADDR,
+        intent: { type: "send_token", token: "0x45D9C8b0D6402CDdEFe4e3965E907d29897B9C7d", amount: "25.5", recipient: "0xdef" },
+      },
+    });
+  });
+
+  it("tx-builder submitSignature: id is path-encoded", async () => {
+    fetchMock.mockResolvedValueOnce(reply(F.submitted));
+    const tx = await txBuilder.submitSignature("user-jwt", "a/b", {
+      type: "webauthn", authenticator_data: "ad", client_data_json: "cd", signature: "sig",
+    });
+    expect(tx).toMatchObject({ status: "submitted", transaction_hash: null, failure_reason: null });
+    expect(sent()).toEqual({
+      url: `${BASE}/tx-builder/v0/transactions/a%2Fb/signature`,
+      method: "POST",
+      auth: USER,
+      body: { type: "webauthn", authenticator_data: "ad", client_data_json: "cd", signature: "sig" },
+    });
+  });
+
+  it("tx-builder getTransaction: id is path-encoded", async () => {
+    fetchMock.mockResolvedValueOnce(reply(F.confirmed));
+    expect(await txBuilder.getTransaction("user-jwt", "a/b")).toMatchObject({
+      status: "confirmed",
+      transaction_hash: F.confirmed.transaction_hash,
+    });
+    expect(sent()).toEqual({
+      url: `${BASE}/tx-builder/v0/transactions/a%2Fb`,
       method: "GET",
       auth: USER,
       body: undefined,

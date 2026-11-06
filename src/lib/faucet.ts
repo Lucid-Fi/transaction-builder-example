@@ -15,9 +15,9 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { currentRequest } from "./http";
+import { USDT_ADDRESS } from "./pact/tx-builder";
 import { record, redact } from "./recorder";
 
-const MOCK_USDT = "0x45D9C8b0D6402CDdEFe4e3965E907d29897B9C7d"; // Arbitrum Sepolia, 6 decimals
 const ABI = parseAbi(["function mint(address to, uint256 amount)"]);
 const AMOUNT = BigInt(100_000_000); // 100 USDT (tsconfig targets ES2017: no bigint literals)
 
@@ -82,7 +82,7 @@ export async function mintTestUsdt(to: string): Promise<{ txHash: string; confir
   }).extend(publicActions);
   // Inside .then so a bad address (getAddress throws) goes through the same mapping.
   const hash = await Promise.resolve()
-    .then(() => client.writeContract({ address: MOCK_USDT, abi: ABI, functionName: "mint", args: [getAddress(to), AMOUNT] }))
+    .then(() => client.writeContract({ address: USDT_ADDRESS, abi: ABI, functionName: "mint", args: [getAddress(to), AMOUNT] }))
     .catch((err) => {
       if (!(err instanceof BaseError)) throw err;
       if (err.walk((e) => e instanceof InsufficientFundsError)) {

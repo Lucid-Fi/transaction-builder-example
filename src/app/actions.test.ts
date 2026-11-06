@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sign } from "@/lib/session";
 import { sendOtp, verifyOtp } from "./login/actions";
 import { createWallet } from "./onboard/actions";
-import { buildDeposit, fundFromFaucet, getDeposit, submitDeposit } from "./wallet/actions";
+import { buildDeposit, buildSend, fundFromFaucet, getDeposit, getSend, submitDeposit, submitSend } from "./wallet/actions";
 
 // With no cookie jar, cookies() throws: an input that gets past validation reaches requireSession and rejects.
 const jar = vi.hoisted(() => ({ values: null as Map<string, string> | null }));
@@ -39,6 +39,23 @@ describe("Server Action input checks", () => {
 
   it("buildDeposit lets a valid amount through to the session check", async () => {
     await expect(buildDeposit("1.5")).rejects.toThrow("no request");
+  });
+
+  const TO = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+
+  it.each(["", "0x123", "70997970C51812dc3A010C7d01b50e0d17dc79C8", `${TO}0`, "0x70997970C51812dc3A010C7d01b50e0d17dc79CZ"])(
+    "buildSend rejects recipient %j",
+    async (recipient) => {
+      await expect(buildSend(recipient, "1")).resolves.toHaveProperty("error");
+    },
+  );
+
+  it.each(["0", "abc", "1.1234567"])("buildSend rejects amount %j", async (amount) => {
+    await expect(buildSend(TO, amount)).resolves.toHaveProperty("error");
+  });
+
+  it("buildSend lets a valid recipient and amount through to the session check", async () => {
+    await expect(buildSend(TO, "1.5")).rejects.toThrow("no request");
   });
 
   it("createWallet rejects a missing credentialId, a null key and a 31-byte x", async () => {
@@ -94,12 +111,7 @@ it("sendOtp: without TWILIO_API_KEY_SID a valid number signs in without an SMS",
   expect(String(fetchMock.mock.calls[0][0])).not.toContain("twilio");
 });
 
-const assertion = { type: "webauthn" as const, authenticator_data: "YQ", client_data_json: "YQ", signature: "YQ" };
-it.each([
-  ["submitDeposit", () => submitDeposit("tx-1", assertion)],
-  ["getDeposit", () => getDeposit("tx-1")],
-])("%s passes the HTTP status through", async (_name, action) => {
-  vi.stubEnv("PACT_PUBLISHABLE_KEY", "pactlabs_pub_sentinel");
+function signIn(overrides: Record<string, unknown> = {}) {
   const now = Date.now() / 1000;
   const session = {
     phone: "+15551234567",
@@ -109,13 +121,44 @@ it.each([
     ephemeral: false,
     walletAddress: "0xabc",
     exp: now + 3600,
+    ...overrides,
   };
   jar.values = new Map([["session", sign("session", session, SECRET)]]);
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 })));
+}
+
+const assertion = { type: "webauthn" as const, authenticator_data: "YQ", client_data_json: "YQ", signature: "YQ" };
+it.each([
+  ["submitDeposit", () => submitDeposit("tx-1", assertion), "/yield/v0/transactions/tx-1/submit"],
+  ["getDeposit", () => getDeposit("tx-1"), "/yield/v0/transactions/tx-1"],
+  ["submitSend", () => submitSend("tx-1", assertion), "/tx-builder/v0/transactions/tx-1/signature"],
+  ["getSend", () => getSend("tx-1"), "/tx-builder/v0/transactions/tx-1"],
+])("%s passes the HTTP status through", async (_name, action, path) => {
+  vi.stubEnv("PACT_API_BASE_URL", "https://pact.test");
+  vi.stubEnv("PACT_PUBLISHABLE_KEY", "pactlabs_pub_sentinel");
+  signIn();
+  const fetchMock = vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 }));
+  vi.stubGlobal("fetch", fetchMock);
 
   await expect(action()).resolves.toMatchObject({ status: 502 });
+  expect(fetchMock.mock.calls[0][0]).toBe(`https://pact.test${path}`);
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
   await expect(action()).resolves.toMatchObject({ status: 200, error: expect.stringContaining("response didn't match schema") });
+});
+
+it("buildSend sends from the session wallet to the given recipient", async () => {
+  vi.stubEnv("PACT_API_BASE_URL", "https://pact.test");
+  vi.stubEnv("PACT_PUBLISHABLE_KEY", "pactlabs_pub_sentinel");
+  signIn();
+  const built = { id: "tx-1", status: "awaiting_signature", user_op_hash: "0xhash", effects: [], expires_at: 1 };
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(built), { status: 201 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const to = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+
+  await expect(buildSend(to, "2.5")).resolves.toEqual({ id: "tx-1", user_op_hash: "0xhash", effects: [], expires_at: 1 });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+  expect(url).toBe("https://pact.test/tx-builder/v0/transactions");
+  expect(JSON.parse(init.body as string)).toMatchObject({ wallet: "0xabc", intent: { recipient: to, amount: "2.5" } });
 });
 
 describe("fundFromFaucet", () => {
@@ -124,21 +167,6 @@ describe("fundFromFaucet", () => {
     faucet.mint.mockReset();
     cache.revalidatePath.mockReset();
   });
-
-  function signIn(overrides: Record<string, unknown> = {}) {
-    const now = Date.now() / 1000;
-    const session = {
-      phone: "+15551234567",
-      entityId: "ent-1",
-      userToken: "user-jwt",
-      tokenExp: now + 3600,
-      ephemeral: false,
-      walletAddress: "0xabc",
-      exp: now + 3600,
-      ...overrides,
-    };
-    jar.values = new Map([["session", sign("session", session, SECRET)]]);
-  }
 
   it("mints to the session wallet and ignores client input", async () => {
     signIn();

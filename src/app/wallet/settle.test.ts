@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { describe, expect, it, vi } from "vitest";
-import type { DepositStatus } from "./actions";
+import type { TransactionStatus } from "./actions";
 import { settle } from "./settle";
 
-const ok = (status: string, terminal = false): DepositStatus => ({
+const ok = (status: string, terminal = false): TransactionStatus => ({
   id: "tx-1",
   status,
   expires_at: 0,
@@ -37,12 +37,12 @@ describe("settle", () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
-  it("a 4xx while polling stops and says the deposit may still land", async () => {
+  it("a 4xx while polling stops and says the transaction may still land", async () => {
     const poll = async () => ({ error: "not found", status: 404 });
     await expect(settle(async () => ok("submitted"), poll, opts())).rejects.toThrow(/may still land/);
   });
 
-  it("a submit body that failed its schema stops and says the deposit may still land", async () => {
+  it("a submit body that failed its schema stops and says the transaction may still land", async () => {
     const submit = vi.fn().mockResolvedValue({
       error: "Submit passkey signature: response didn't match schema: status: Invalid input: expected string, received undefined",
       status: 200,
@@ -56,7 +56,7 @@ describe("settle", () => {
   it("times out with the last error when submit never answers", async () => {
     const submit = async () => ({ error: "upstream unavailable", status: 502 });
     await expect(settle(submit, vi.fn(), { ...opts(), deadline: 0 })).rejects.toThrow(
-      "Timed out waiting for the deposit (last status: unknown; last error: upstream unavailable).",
+      "Timed out waiting for the transaction (last status: unknown; last error: upstream unavailable).",
     );
   });
 

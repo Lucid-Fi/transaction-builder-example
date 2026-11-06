@@ -91,7 +91,7 @@ it has `status`, `reason` (`details.reason`) and `traceId`. Branch on `reason`, 
 to Pact support. Reasons worth handling:
 
 - `insufficient_balance`: fund the wallet first.
-- `previous_operation_pending`: wait for the last deposit to finish.
+- `previous_operation_pending`: wait for the last transaction to finish.
 - `build_expired`, `build_superseded`: build and sign again.
 - `rate_limited`: back off and retry.
 
@@ -127,6 +127,20 @@ The browser code is in `src/lib/webauthn.ts` and uses only `navigator.credential
 
 Pact handles the rest: signature normalisation and encoding it into the smart account's signature
 format. You don't need any account-abstraction library.
+
+## Sending tokens
+
+The Send USDT form calls tx-builder directly (`src/lib/pact/tx-builder.ts`) with the publishable key
+and user token:
+
+- **Build:** `POST /tx-builder/v0/transactions` with
+  `{ "chain": "arbitrum-sepolia", "wallet": "0x…", "intent": { "type": "send_token", "token": "<ERC-20 address>", "amount": "25.5", "recipient": "0x…" } }`.
+  `amount` is in token units. The response carries the `id` and `user_op_hash` to sign.
+- **Submit:** `POST /tx-builder/v0/transactions/{id}/signature`.
+- **Status:** `GET /tx-builder/v0/transactions/{id}` until the status is `confirmed`, `failed`, `expired`, `superseded` or `invalid`.
+
+Signing and submitting work as in [Passkey signing](#passkey-signing). The yield deposit uses yield
+routes that wrap the same builder.
 
 ## Demo faucet (not part of the integration)
 

@@ -1,5 +1,5 @@
 // Browser-side passkey helpers: only navigator.credentials and crypto.subtle, no deps.
-import type { WebAuthnAssertion } from "./pact/yield";
+import type { WebAuthnAssertion } from "./pact/tx-builder";
 
 export function b64urlEncode(bytes: Uint8Array): string {
   let bin = "";

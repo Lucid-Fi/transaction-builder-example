@@ -1,11 +1,10 @@
 import "server-only";
 import { z } from "zod";
 import { call, pactUrl, userAuth } from "../http";
+import { BuiltTransaction, Transaction, type WebAuthnAssertion } from "./tx-builder";
 
-export const CHAIN = "arbitrum-sepolia";
 export const YIELD_SOURCE = "sandbox-usdt-arbitrum-sepolia";
 export const USDT_TOKEN = "arbitrum-sepolia-test-usdt"; // MockUSDT's token-info slug
-export const TERMINAL = ["confirmed", "failed", "expired", "superseded", "invalid"];
 
 const Earned = z.object({ total: z.string(), trailing_30d: z.string() });
 
@@ -35,31 +34,6 @@ const YieldSource = z.object({
   apy: z.object({ base: z.string(), incentives: z.string(), total: z.string(), trailing_30d: z.string().nullable() }),
 });
 export type YieldSource = z.infer<typeof YieldSource>;
-
-const BuiltTransaction = z.object({
-  id: z.string(),
-  status: z.string(),
-  user_op_hash: z.string(),
-  effects: z.array(z.unknown()),
-  expires_at: z.number(), // microseconds
-});
-export type BuiltTransaction = z.infer<typeof BuiltTransaction>;
-
-export type WebAuthnAssertion = {
-  type: "webauthn";
-  authenticator_data: string; // base64url
-  client_data_json: string; // base64url
-  signature: string; // base64url DER
-};
-
-const Transaction = z.object({
-  id: z.string(),
-  status: z.string(),
-  expires_at: z.number(), // microseconds
-  transaction_hash: z.string().nullable(),
-  failure_reason: z.string().nullable(),
-});
-export type Transaction = z.infer<typeof Transaction>;
 
 export async function getWalletYield(token: string, address: string): Promise<WalletYield> {
   // yield-analytics: GET /yield/v0/wallets/{address}
