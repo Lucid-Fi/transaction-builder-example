@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { call, pactUrl, userAuth } from "../http";
-import { CHAIN } from "./yield";
+import { CHAIN } from "./tx-builder";
 
 const AaAccount = z.object({
   entity_id: z.string(),

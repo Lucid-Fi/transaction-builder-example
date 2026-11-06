@@ -16,6 +16,7 @@ import { CopyButton } from "./copy-button";
 import { DepositForm } from "./deposit-form";
 import { FaucetButton } from "./faucet-button";
 import { money, percent, short, tokens } from "./format";
+import { SendForm } from "./send-form";
 
 const LABELS: Record<string, string> = {
   earn_deposit: "Deposit to Earn",
@@ -40,6 +41,18 @@ function Unavailable({ what, reason }: { what: string; reason: unknown }) {
     <Alert variant="destructive">
       <AlertDescription>
         {what} unavailable — {detail}, see <Link href="/inspector">Inspector</Link>.
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function NoPasskey({ credentialId, rpId }: { credentialId?: string; rpId?: string }) {
+  return (
+    <Alert>
+      <AlertDescription>
+        {credentialId
+          ? `This wallet's passkey belongs to ${rpId || "another site"}, so it can't sign here (this app uses ${config.webauthnRpId}).`
+          : "No passkey for this wallet in this session. Sign out and sign in again."}
       </AlertDescription>
     </Alert>
   );
@@ -175,13 +188,15 @@ export default async function WalletPage() {
         {canSign ? (
           <DepositForm credentialId={session.credentialId!} rpId={config.webauthnRpId} />
         ) : (
-          <Alert>
-            <AlertDescription>
-              {session.credentialId
-                ? `This wallet's passkey belongs to ${session.rpId || "another site"}, so it can't sign here (this app uses ${config.webauthnRpId}).`
-                : "No passkey for this wallet in this session. Sign out and sign in again."}
-            </AlertDescription>
-          </Alert>
+          <NoPasskey credentialId={session.credentialId} rpId={session.rpId} />
+        )}
+      </Section>
+
+      <Section title="Send USDT" description="Sends USDT from this wallet to any address with one passkey signature. Pact pays the gas.">
+        {canSign ? (
+          <SendForm credentialId={session.credentialId!} rpId={config.webauthnRpId} />
+        ) : (
+          <NoPasskey credentialId={session.credentialId} rpId={session.rpId} />
         )}
       </Section>
 
